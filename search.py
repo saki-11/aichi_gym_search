@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import re
 from datetime import datetime
 from datetime import date
+from dataclasses import dataclass
 
 # ============================================================
 # 基本設定
@@ -81,28 +82,18 @@ if TARGET_CITY not in CITY_SETTINGS:
     )
 
 
-CITY = CITY_SETTINGS[TARGET_CITY]
-
-CITY_NAME = CITY["name"]
-
-COMMUNITY_CD = CITY["community_cd"]
-
-AREA_CD = CITY["area_cd"]
-
-
 # ============================================================
-# 検索条件
+# デフォルト検索条件
+#
+# これらはデフォルト値であり、検索処理中に変更しません。
+# 実際の検索ごとの値は SearchContext に保持します。
 # ============================================================
 
-# ------------------------------------------------------------
-# 検索開始日
-# ------------------------------------------------------------
+DEFAULT_SELECT_YY = "2026"
+DEFAULT_SELECT_MM = "8"
+DEFAULT_SELECT_DD = "13"
 
-SELECT_YY = "2026"
-SELECT_MM = "8"
-SELECT_DD = "13"
-
-SELECTED_WEEK = [
+DEFAULT_SELECTED_WEEK = [
     0,
     0,
     0,
@@ -149,10 +140,22 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 # ============================================================
-# セッション
+# 検索単位の状態
 # ============================================================
 
-session = None
+@dataclass
+class SearchContext:
+    """1回の検索に必要な可変状態を保持する。"""
+
+    session: requests.Session
+    target_city: str
+    city_name: str
+    community_cd: str
+    area_cd: str
+    select_yy: str
+    select_mm: str
+    select_dd: str
+    selected_week: list
 
 
 # ============================================================
@@ -587,7 +590,7 @@ def extract_time_range_from_cell_text(text):
 # 空き状況HTML解析
 # ============================================================
 
-def parse_vacant_result(html_source):
+def parse_vacant_result(html_source, fallback_year=None):
 
     if isinstance(html_source, Path):
 
@@ -733,11 +736,11 @@ def parse_vacant_result(html_source):
             )
 
 
-    if year is None:
+    if year is None and fallback_year is not None:
 
         try:
-            year = int(SELECT_YY)
-        except ValueError:
+            year = int(fallback_year)
+        except (TypeError, ValueError):
             year = None
 
 
@@ -1371,13 +1374,13 @@ def get_weekday_text(date_string):
 # 空き時間一覧表示
 # ============================================================
 
-def print_available_summary(facilities):
+def print_available_summary(ctx, facilities):
 
     print()
     print("=" * 70)
     print(
         f"空き時間一覧 "
-        f"({CITY_NAME})"
+        f"({ctx.city_name})"
     )
     print("=" * 70)
 
@@ -1541,14 +1544,14 @@ def print_available_summary(facilities):
 # STEP 1
 # ============================================================
 
-def step1_top():
+def step1_top(ctx):
 
     print()
     print("=" * 60)
     print("STEP 1: TOP")
     print("=" * 60)
 
-    response = session.get(
+    response = ctx.session.get(
         TOP_URL
     )
 
@@ -1568,7 +1571,7 @@ def step1_top():
 # STEP 2
 # ============================================================
 
-def step2_reserve_menu():
+def step2_reserve_menu(ctx):
 
     print()
     print("=" * 60)
@@ -1602,7 +1605,7 @@ def step2_reserve_menu():
         "processMode": "0",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         RESERVE_MENU_URL,
         data=payload,
     )
@@ -1623,7 +1626,7 @@ def step2_reserve_menu():
 # STEP 3
 # ============================================================
 
-def step3_purpose_category():
+def step3_purpose_category(ctx):
 
     print()
     print("=" * 60)
@@ -1661,7 +1664,7 @@ def step3_purpose_category():
         "processMode": "0",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         PURPOSE_CATEGORY_URL,
         data=payload,
     )
@@ -1682,7 +1685,7 @@ def step3_purpose_category():
 # STEP 4
 # ============================================================
 
-def step4_sports_category():
+def step4_sports_category(ctx):
 
     print()
     print("=" * 60)
@@ -1720,7 +1723,7 @@ def step4_sports_category():
         "processMode": "0",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         PURPOSE_CATEGORY_URL,
         data=payload,
     )
@@ -1741,7 +1744,7 @@ def step4_sports_category():
 # STEP 5
 # ============================================================
 
-def step5_volleyball():
+def step5_volleyball(ctx):
 
     print()
     print("=" * 60)
@@ -1780,7 +1783,7 @@ def step5_volleyball():
         "processMode": "4",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         PURPOSE_URL,
         data=payload
     )
@@ -1801,27 +1804,27 @@ def step5_volleyball():
 # STEP 6
 # ============================================================
 
-def step6_community():
+def step6_community(ctx):
 
     print()
     print("=" * 60)
     print(
-        f"STEP 6: 自治体 - {CITY_NAME}"
+        f"STEP 6: 自治体 - {ctx.city_name}"
     )
     print("=" * 60)
 
     print(
-        f"COMMUNITY_CD = {COMMUNITY_CD}"
+        f"ctx.community_cd = {ctx.community_cd}"
     )
 
     payload = {
         "selectMenu": "1",
-        "selectedCommunityCd": COMMUNITY_CD,
+        "selectedCommunityCd": ctx.community_cd,
         "displayNo": "prwia1000",
         "processMode": "4",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         COMMUNITY_URL,
         data=payload
     )
@@ -1834,7 +1837,7 @@ def step6_community():
 
     save_response(
         response,
-        f"06_{TARGET_CITY.lower()}.html"
+        f"06_{ctx.target_city.lower()}.html"
     )
 
 
@@ -1842,24 +1845,24 @@ def step6_community():
 # STEP 7
 # ============================================================
 
-def step7_area():
+def step7_area(ctx):
 
     print()
     print("=" * 60)
     print(
-        f"STEP 7: 地域 - {CITY_NAME}"
+        f"STEP 7: 地域 - {ctx.city_name}"
     )
     print("=" * 60)
 
     print(
-        f"AREA_CD = {AREA_CD}"
+        f"ctx.area_cd = {ctx.area_cd}"
     )
 
     payload = {
         "displayNo": "prwbb1000",
         "selectMenu": "1",
 
-        "selectAreaCd": AREA_CD,
+        "selectAreaCd": ctx.area_cd,
         "selectBldCd": "0",
 
         "selectPpsdCd": PURPOSE_CATEGORY_CD,
@@ -1880,7 +1883,7 @@ def step7_area():
         "dispSelectInstBldCd": "",
         "dispSelectInstCd": "",
 
-        "selectCommunityManageCd": COMMUNITY_CD,
+        "selectCommunityManageCd": ctx.community_cd,
         "selectCommunityPlaceCd": "0",
 
         "productMode": "3",
@@ -1889,7 +1892,7 @@ def step7_area():
         "processMode": "0",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         AREA_URL,
         data=payload
     )
@@ -1902,7 +1905,7 @@ def step7_area():
 
     save_response(
         response,
-        f"07_area_{TARGET_CITY.lower()}.html"
+        f"07_area_{ctx.target_city.lower()}.html"
     )
 
 
@@ -1910,12 +1913,12 @@ def step7_area():
 # STEP 8
 # ============================================================
 
-def step8_building():
+def step8_building(ctx):
 
     print()
     print("=" * 60)
     print(
-        f"STEP 8: 館 - {CITY_NAME}"
+        f"STEP 8: 館 - {ctx.city_name}"
     )
     print("=" * 60)
 
@@ -1923,7 +1926,7 @@ def step8_building():
         "displayNo": "prwbb2000",
         "selectMenu": "1",
 
-        "selectAreaCd": AREA_CD,
+        "selectAreaCd": ctx.area_cd,
         "selectBldCd": BUILDING_CD,
 
         "selectPpsdCd": PURPOSE_CATEGORY_CD,
@@ -1942,7 +1945,7 @@ def step8_building():
         "dispSelectInstBldCd": "",
         "dispSelectInstCd": "",
 
-        "selectCommunityManageCd": COMMUNITY_CD,
+        "selectCommunityManageCd": ctx.community_cd,
         "selectCommunityPlaceCd": "0",
 
         "productMode": "3",
@@ -1951,7 +1954,7 @@ def step8_building():
         "processMode": "0",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         BUILDING_URL,
         data=payload
     )
@@ -1972,12 +1975,12 @@ def step8_building():
 # STEP 9
 # ============================================================
 
-def step9_facility():
+def step9_facility(ctx):
 
     print()
     print("=" * 60)
     print(
-        f"STEP 9: 施設 - {CITY_NAME}"
+        f"STEP 9: 施設 - {ctx.city_name}"
     )
     print("=" * 60)
 
@@ -1985,7 +1988,7 @@ def step9_facility():
         "displayNo": "prwbb3000",
         "selectMenu": "1",
 
-        "selectAreaCd": AREA_CD,
+        "selectAreaCd": ctx.area_cd,
         "selectBldCd": BUILDING_CD,
 
         "selectPpsdCd": PURPOSE_CATEGORY_CD,
@@ -2004,7 +2007,7 @@ def step9_facility():
         "dispSelectInstBldCd": "",
         "dispSelectInstCd": "",
 
-        "selectCommunityManageCd": COMMUNITY_CD,
+        "selectCommunityManageCd": ctx.community_cd,
         "selectCommunityPlaceCd": "0",
 
         "productMode": "3",
@@ -2013,7 +2016,7 @@ def step9_facility():
         "processMode": "0",
     }
 
-    response = session.post(
+    response = ctx.session.post(
         FACILITY_URL,
         data=payload
     )
@@ -2036,7 +2039,7 @@ def step9_facility():
 # STEP 10
 # ============================================================
 
-def step10_search():
+def step10_search(ctx):
 
     print()
     print("=" * 60)
@@ -2045,10 +2048,10 @@ def step10_search():
 
     print(
         f"指定日: "
-        f"{SELECT_YY}-{SELECT_MM}-{SELECT_DD}"
+        f"{ctx.select_yy}-{ctx.select_mm}-{ctx.select_dd}"
     )
 
-    selected_week = SELECTED_WEEK
+    selected_week = ctx.selected_week
 
     print(
         f"曜日設定: {selected_week}"
@@ -2059,9 +2062,9 @@ def step10_search():
     )
 
 
-    select_yy = SELECT_YY
-    select_mm = SELECT_MM
-    select_dd = SELECT_DD
+    select_yy = ctx.select_yy
+    select_mm = ctx.select_mm
+    select_dd = ctx.select_dd
 
     disp_yy = select_yy
     disp_mm = select_mm
@@ -2134,7 +2137,7 @@ def step10_search():
     ])
 
 
-    response = session.post(
+    response = ctx.session.post(
         VACANT_URL,
         data=step10_data
     )
@@ -2190,7 +2193,8 @@ def step10_search():
 def parse_facility_response(
     response,
     facility_index,
-    filename
+    filename,
+    fallback_year=None
 ):
 
     response.encoding = "cp932"
@@ -2201,7 +2205,8 @@ def parse_facility_response(
     )
 
     result = parse_vacant_result(
-        response.text
+        response.text,
+        fallback_year=fallback_year
     )
 
     available_slots = (
@@ -2423,6 +2428,7 @@ def check_next_facility_response(
 # ============================================================
 
 def scan_all_facilities(
+    ctx,
     first_response
 ):
 
@@ -2436,7 +2442,8 @@ def scan_all_facilities(
     first_facility = parse_facility_response(
         first_response,
         FIRST_FACILITY_INDEX,
-        "11_facility_0.html"
+        "11_facility_0.html",
+        fallback_year=ctx.select_yy
     )
 
     facilities.append(
@@ -2563,7 +2570,7 @@ def scan_all_facilities(
 
         try:
 
-            response = session.post(
+            response = ctx.session.post(
                 VACANT_URL,
                 data=step_data,
                 timeout=60
@@ -2652,7 +2659,8 @@ def scan_all_facilities(
         # ----------------------------------------------------
 
         result = parse_vacant_result(
-            response.text
+            response.text,
+            fallback_year=ctx.select_yy
         )
 
 
@@ -2728,15 +2736,6 @@ def main(
     selected_week=None
 ):
 
-    global session
-    global CITY_NAME
-    global COMMUNITY_CD
-    global AREA_CD
-    global SELECT_YY
-    global SELECT_MM
-    global SELECT_DD
-    global SELECTED_WEEK
-
     # ========================================================
     # 自治体設定
     # ========================================================
@@ -2751,34 +2750,35 @@ def main(
 
     city = CITY_SETTINGS[city_key]
 
-    CITY_NAME = city["name"]
-    COMMUNITY_CD = city["community_cd"]
-    AREA_CD = city["area_cd"]
-
+    city_name = city["name"]
+    community_cd = city["community_cd"]
+    area_cd = city["area_cd"]
 
     # ========================================================
     # 検索日
     # ========================================================
 
+    select_yy = DEFAULT_SELECT_YY
+    select_mm = DEFAULT_SELECT_MM
+    select_dd = DEFAULT_SELECT_DD
+
     if search_date is not None:
-
-        SELECT_YY = search_date.year
-        SELECT_MM = search_date.month
-        SELECT_DD = search_date.day
-
+        select_yy = str(search_date.year)
+        select_mm = str(search_date.month)
+        select_dd = str(search_date.day)
 
     # ========================================================
     # 曜日設定
     # ========================================================
 
-    if selected_week is not None:
-
+    if selected_week is None:
+        selected_week = DEFAULT_SELECTED_WEEK.copy()
+    else:
         if len(selected_week) != 8:
             raise ValueError(
                 "selected_week は8個の値が必要です"
             )
-
-        SELECTED_WEEK = selected_week
+        selected_week = list(selected_week)
 
     print()
     print("=" * 70)
@@ -2786,15 +2786,15 @@ def main(
     print("=" * 70)
 
     print(
-        f"自治体: {CITY_NAME}"
+        f"自治体: {city_name}"
     )
 
     print(
-        f"COMMUNITY_CD: {COMMUNITY_CD}"
+        f"COMMUNITY_CD: {community_cd}"
     )
 
     print(
-        f"AREA_CD: {AREA_CD}"
+        f"AREA_CD: {area_cd}"
     )
 
     print(
@@ -2803,7 +2803,7 @@ def main(
 
     print(
         f"検索日: "
-        f"{SELECT_YY}-{SELECT_MM}-{SELECT_DD}"
+        f"{select_yy}-{select_mm}-{select_dd}"
     )
 
     print("=" * 70)
@@ -2813,7 +2813,6 @@ def main(
     # ========================================================
 
     session = requests.Session()
-
 
     session.headers.update({
         "User-Agent": (
@@ -2825,76 +2824,77 @@ def main(
         )
     })
 
+    ctx = SearchContext(
+        session=session,
+        target_city=city_key,
+        city_name=city_name,
+        community_cd=community_cd,
+        area_cd=area_cd,
+        select_yy=select_yy,
+        select_mm=select_mm,
+        select_dd=select_dd,
+        selected_week=selected_week,
+    )
 
     # ========================================================
     # STEP 1
     # ========================================================
 
-    step1_top()
-
+    step1_top(ctx)
 
     # ========================================================
     # STEP 2
     # ========================================================
 
-    step2_reserve_menu()
-
+    step2_reserve_menu(ctx)
 
     # ========================================================
     # STEP 3
     # ========================================================
 
-    step3_purpose_category()
-
+    step3_purpose_category(ctx)
 
     # ========================================================
     # STEP 4
     # ========================================================
 
-    step4_sports_category()
-
+    step4_sports_category(ctx)
 
     # ========================================================
     # STEP 5
     # ========================================================
 
-    step5_volleyball()
-
+    step5_volleyball(ctx)
 
     # ========================================================
     # STEP 6
     # ========================================================
 
-    step6_community()
-
+    step6_community(ctx)
 
     # ========================================================
     # STEP 7
     # ========================================================
 
-    step7_area()
-
+    step7_area(ctx)
 
     # ========================================================
     # STEP 8
     # ========================================================
 
-    step8_building()
-
+    step8_building(ctx)
 
     # ========================================================
     # STEP 9
     # ========================================================
 
-    step9_facility()
-
+    step9_facility(ctx)
 
     # ========================================================
     # STEP 10
     # ========================================================
 
-    first_response = step10_search()
-
+    first_response = step10_search(ctx)
 
     # ========================================================
     # STEP 11以降
@@ -2905,20 +2905,19 @@ def main(
     print("施設巡回開始")
     print("=" * 60)
 
-
     facilities = scan_all_facilities(
+        ctx,
         first_response
     )
-
 
     # ========================================================
     # 最終結果
     # ========================================================
 
     print_available_summary(
+        ctx,
         facilities
     )
-
 
     # ========================================================
     # 完了
@@ -2934,7 +2933,6 @@ def main(
     )
 
     return facilities
-
 
 # ============================================================
 # エントリーポイント
