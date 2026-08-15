@@ -46,6 +46,7 @@ VACANT_URL = (
     f"{BASE_URL}/rsvWInstSrchVacantAction.do"
 )
 
+HTTP_TIMEOUT = 60
 
 # ============================================================
 # 検索対象自治体
@@ -1552,7 +1553,8 @@ def step1_top(ctx):
     print("=" * 60)
 
     response = ctx.session.get(
-        TOP_URL
+        TOP_URL,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -1608,6 +1610,7 @@ def step2_reserve_menu(ctx):
     response = ctx.session.post(
         RESERVE_MENU_URL,
         data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -1667,6 +1670,7 @@ def step3_purpose_category(ctx):
     response = ctx.session.post(
         PURPOSE_CATEGORY_URL,
         data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -1726,6 +1730,7 @@ def step4_sports_category(ctx):
     response = ctx.session.post(
         PURPOSE_CATEGORY_URL,
         data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -1785,7 +1790,8 @@ def step5_volleyball(ctx):
 
     response = ctx.session.post(
         PURPOSE_URL,
-        data=payload
+        data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -1826,7 +1832,8 @@ def step6_community(ctx):
 
     response = ctx.session.post(
         COMMUNITY_URL,
-        data=payload
+        data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -1956,7 +1963,8 @@ def step8_building(ctx):
 
     response = ctx.session.post(
         BUILDING_URL,
-        data=payload
+        data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -2018,7 +2026,8 @@ def step9_facility(ctx):
 
     response = ctx.session.post(
         FACILITY_URL,
-        data=payload
+        data=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -2139,7 +2148,8 @@ def step10_search(ctx):
 
     response = ctx.session.post(
         VACANT_URL,
-        data=step10_data
+        data=step10_data,
+        timeout=HTTP_TIMEOUT,
     )
 
     print_response_info(
@@ -2573,7 +2583,7 @@ def scan_all_facilities(
             response = ctx.session.post(
                 VACANT_URL,
                 data=step_data,
-                timeout=60
+                timeout=HTTP_TIMEOUT,
             )
 
         except requests.Timeout:
