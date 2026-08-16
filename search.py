@@ -51,6 +51,19 @@ VACANT_URL = (
 
 HTTP_TIMEOUT = 60
 
+
+# HTMLレスポンス保存
+#
+# False:
+#   HTMLをファイルに保存しない。
+#   通常運用・Cloud Runではこちらを使用する。
+#
+# True:
+#   デバッグ用としてHTMLをファイル保存する。
+#
+SAVE_HTML_RESPONSES = False
+
+
 # ============================================================
 # 検索対象自治体
 # ============================================================
@@ -186,18 +199,23 @@ def print_response_info(response):
     logger.debug("URL: %s", response.url)
     logger.debug("Cookies: %s", response.cookies.get_dict())
 
+
 def save_response(response, filename):
 
-    path = OUTPUT_DIR / filename
+    if not SAVE_HTML_RESPONSES:
+        return None
 
-    response.encoding = "cp932"
+    path = OUTPUT_DIR / filename
 
     path.write_text(
         response.text,
         encoding="utf-8"
     )
 
-    logger.info("Response saved: %s", path)
+    logger.info(
+        "Response saved: %s",
+        path
+    )
 
     return path
 
@@ -2143,8 +2161,10 @@ def parse_facility_response(
         filename
     )
 
+    html_text = response.text
+
     result = parse_vacant_result(
-        response.text,
+        html_text,
         fallback_year=fallback_year
     )
 
@@ -2185,7 +2205,13 @@ def parse_facility_response(
         "index": facility_index,
         "result": result,
         "available_slots": available_slots,
-        "html": path,
+
+        # 通常運用ではファイル保存せず、
+        # 次施設処理に必要なHTMLをメモリ上で保持する。
+        "html": html_text,
+
+        # デバッグ時に保存した場合だけパスが入る。
+        "html_path": path,
     }
 
 
@@ -2421,9 +2447,7 @@ def scan_all_facilities(
 
 
         previous_soup = BeautifulSoup(
-            previous_html.read_text(
-                encoding="utf-8"
-            ),
+            previous_html,
             "html.parser"
         )
 
@@ -2580,12 +2604,7 @@ def scan_all_facilities(
         if not valid:
 
             logger.warning(
-                "次施設が存在しないとは断定しません。"
-            )
-
-            logger.warning(
-                "今回のレスポンスでは"
-                "次施設結果を取得できませんでした。"
+                "次施設が存在しないとは判断しました。"
             )
 
             break
@@ -2612,7 +2631,12 @@ def scan_all_facilities(
             "index": next_index,
             "result": result,
             "available_slots": available_slots,
-            "html": path,
+
+            # 次施設処理のためHTML本文をメモリ上で保持する。
+            "html": response.text,
+
+            # デバッグ時に保存した場合だけパスが入る。
+            "html_path": path,
         }
 
 
