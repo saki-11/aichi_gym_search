@@ -152,9 +152,10 @@ FIRST_FACILITY_INDEX = 0
 # 出力先
 # ============================================================
 
-OUTPUT_DIR = Path("step4")
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR = Path("html_responses")
 
+if SAVE_HTML_RESPONSES:
+    OUTPUT_DIR.mkdir(exist_ok=True)
 
 # ============================================================
 # 検索単位の状態
