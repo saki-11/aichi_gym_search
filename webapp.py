@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi import Query
@@ -6,6 +8,10 @@ from datetime import date
 
 import search as search_module
 
+
+logger = logging.getLogger(__name__)
+
+
 app = FastAPI()
 
 app.mount(
@@ -13,6 +19,7 @@ app.mount(
     StaticFiles(directory="static"),
     name="static"
 )
+
 
 # ============================================================
 # トップページ
@@ -921,9 +928,6 @@ def index():
     </html>
     """
 
-# ============================================================
-# 検索
-# ============================================================
 
 # ============================================================
 # 検索
@@ -936,21 +940,23 @@ def search(
     weekday: list[int] | None = Query(default=None)
 ):
 
-    print()
-    print("=" * 60)
-    print("Webから検索処理を開始します")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Webから検索処理を開始します")
+    logger.info("=" * 60)
 
-    print(
-        f"Webから受け取った自治体: {city}"
+    logger.info(
+        "Webから受け取った自治体: %s",
+        city
     )
 
-    print(
-        f"Webから受け取った検索日: {search_date}"
+    logger.info(
+        "Webから受け取った検索日: %s",
+        search_date
     )
 
-    print(
-        f"Webから受け取った曜日: {weekday}"
+    logger.info(
+        "Webから受け取った曜日: %s",
+        weekday
     )
 
 
@@ -972,8 +978,9 @@ def search(
             if 0 <= index <= 7:
                 selected_week[index] = 1
 
-    print(
-        f"Web側で作成した曜日設定: {selected_week}"
+    logger.info(
+        "Web側で作成した曜日設定: %s",
+        selected_week
     )
 
 
@@ -1053,9 +1060,9 @@ def search(
     )
 
 
-    print()
-    print(
-        f"Web側で受け取った施設数: {len(facilities)}"
+    logger.info(
+        "Web側で受け取った施設数: %s",
+        len(facilities)
     )
 
 

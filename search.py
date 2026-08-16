@@ -1,3 +1,4 @@
+import logging
 import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
@@ -5,6 +6,8 @@ import re
 from datetime import datetime
 from datetime import date
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # 基本設定
@@ -47,6 +50,19 @@ VACANT_URL = (
 )
 
 HTTP_TIMEOUT = 60
+
+
+# HTMLレスポンス保存
+#
+# False:
+#   HTMLをファイルに保存しない。
+#   通常運用・Cloud Runではこちらを使用する。
+#
+# True:
+#   デバッグ用としてHTMLをファイル保存する。
+#
+SAVE_HTML_RESPONSES = False
+
 
 # ============================================================
 # 検索対象自治体
@@ -136,9 +152,10 @@ FIRST_FACILITY_INDEX = 0
 # 出力先
 # ============================================================
 
-OUTPUT_DIR = Path("step4")
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR = Path("html_responses")
 
+if SAVE_HTML_RESPONSES:
+    OUTPUT_DIR.mkdir(exist_ok=True)
 
 # ============================================================
 # 検索単位の状態
@@ -179,30 +196,26 @@ def make_disp_week():
 
 def print_response_info(response):
 
-    """
-    print("STATUS:")
-    print(response.status_code)
+    logger.debug("STATUS: %s", response.status_code)
+    logger.debug("URL: %s", response.url)
+    logger.debug("Cookies: %s", response.cookies.get_dict())
 
-    print("URL:")
-    print(response.url)
-
-    print("Cookies:")
-    print(session.cookies.get_dict())
-    """
 
 def save_response(response, filename):
 
-    path = OUTPUT_DIR / filename
+    if not SAVE_HTML_RESPONSES:
+        return None
 
-    response.encoding = "cp932"
+    path = OUTPUT_DIR / filename
 
     path.write_text(
         response.text,
         encoding="utf-8"
     )
 
-    print(
-        f"Response saved: {path}"
+    logger.info(
+        "Response saved: %s",
+        path
     )
 
     return path
@@ -445,16 +458,10 @@ def set_post_value(data, name, value):
 
 def print_post_data(data):
 
-    print()
-    """
-    print("POST DATA:")
+    logger.debug("POST DATA:")
 
     for name, value in data:
-
-        print(
-            f"  {name} = {value}"
-        )
-    """
+        logger.debug("  %s = %s", name, value)
 
 # ============================================================
 # 全角数字 → 半角数字
@@ -1377,20 +1384,13 @@ def get_weekday_text(date_string):
 
 def print_available_summary(ctx, facilities):
 
-    print()
-    print("=" * 70)
-    print(
-        f"空き時間一覧 "
-        f"({ctx.city_name})"
-    )
-    print("=" * 70)
-
+    logger.info("=" * 70)
+    logger.info("空き時間一覧 (%s)", ctx.city_name)
+    logger.info("=" * 70)
 
     if not facilities:
 
-        print(
-            "施設情報がありません。"
-        )
+        logger.info("施設情報がありません。")
 
         return
 
@@ -1429,19 +1429,17 @@ def print_available_summary(ctx, facilities):
                 last_period = last_date
 
 
-    print()
-
     if first_period and last_period:
 
-        print(
-            f"検索期間: "
-            f"{first_period} ～ "
-            f"{last_period}"
+        logger.info(
+            "検索期間: %s ～ %s",
+            first_period,
+            last_period,
         )
 
     else:
 
-        print(
+        logger.info(
             "検索期間: 不明"
         )
 
@@ -1465,16 +1463,16 @@ def print_available_summary(ctx, facilities):
         )
 
 
-        print()
-        print(
-            f"[施設 {index}] "
-            f"{facility_name}"
+        logger.info(
+            "[施設 %s] %s",
+            index,
+            facility_name,
         )
 
 
         if not available_slots:
 
-            print(
+            logger.info(
                 "  空きなし"
             )
 
@@ -1506,39 +1504,41 @@ def print_available_summary(ctx, facilities):
 
             if date and weekday:
 
-                print(
-                    f"  {date}"
-                    f"({weekday}) "
-                    f"{time}"
+                logger.info(
+                    "  %s(%s) %s",
+                    date,
+                    weekday,
+                    time,
                 )
 
             elif date:
 
-                print(
-                    f"  {date} "
-                    f"{time}"
+                logger.info(
+                    "  %s %s",
+                    date,
+                    time,
                 )
 
             else:
 
-                print(
-                    f"  {item.get('date_text', '')} "
-                    f"{time}"
+                logger.info(
+                    "  %s %s",
+                    item.get("date_text", ""),
+                    time,
                 )
 
 
             total_available += 1
 
 
-    print()
-    print("-" * 70)
+    logger.info("-" * 70)
 
-    print(
-        f"空き時間合計: "
-        f"{total_available}件"
+    logger.info(
+        "空き時間合計: %s件",
+        total_available,
     )
 
-    print("=" * 70)
+    logger.info("=" * 70)
 
 
 # ============================================================
@@ -1547,10 +1547,7 @@ def print_available_summary(ctx, facilities):
 
 def step1_top(ctx):
 
-    print()
-    print("=" * 60)
-    print("STEP 1: TOP")
-    print("=" * 60)
+    logger.info("STEP 1: TOP")
 
     response = ctx.session.get(
         TOP_URL,
@@ -1575,10 +1572,7 @@ def step1_top(ctx):
 
 def step2_reserve_menu(ctx):
 
-    print()
-    print("=" * 60)
-    print("STEP 2: 予約")
-    print("=" * 60)
+    logger.info("STEP 2: 予約")
 
     payload = {
         "displayNo": "prwaa1000",
@@ -1631,10 +1625,7 @@ def step2_reserve_menu(ctx):
 
 def step3_purpose_category(ctx):
 
-    print()
-    print("=" * 60)
-    print("STEP 3: 利用目的分類")
-    print("=" * 60)
+    logger.info("STEP 3: 利用目的分類")
 
     payload = {
         "displayNo": "prwaa1000",
@@ -1691,10 +1682,7 @@ def step3_purpose_category(ctx):
 
 def step4_sports_category(ctx):
 
-    print()
-    print("=" * 60)
-    print("STEP 4: 体育／バレー・バスケ")
-    print("=" * 60)
+    logger.info("STEP 4: 体育／バレー・バスケ")
 
     payload = {
         "displayNo": "prwbb5000",
@@ -1751,10 +1739,7 @@ def step4_sports_category(ctx):
 
 def step5_volleyball(ctx):
 
-    print()
-    print("=" * 60)
-    print("STEP 5: バレーボール")
-    print("=" * 60)
+    logger.info("STEP 5: バレーボール")
 
     payload = {
         "displayNo": "prwbb6000",
@@ -1812,16 +1797,9 @@ def step5_volleyball(ctx):
 
 def step6_community(ctx):
 
-    print()
-    print("=" * 60)
-    print(
-        f"STEP 6: 自治体 - {ctx.city_name}"
-    )
-    print("=" * 60)
+    logger.info("STEP 6: 自治体 - %s", ctx.city_name)
 
-    print(
-        f"ctx.community_cd = {ctx.community_cd}"
-    )
+    logger.debug("ctx.community_cd = %s", ctx.community_cd)
 
     payload = {
         "selectMenu": "1",
@@ -1854,16 +1832,9 @@ def step6_community(ctx):
 
 def step7_area(ctx):
 
-    print()
-    print("=" * 60)
-    print(
-        f"STEP 7: 地域 - {ctx.city_name}"
-    )
-    print("=" * 60)
+    logger.info("STEP 7: 地域 - %s", ctx.city_name)
 
-    print(
-        f"ctx.area_cd = {ctx.area_cd}"
-    )
+    logger.debug("ctx.area_cd = %s", ctx.area_cd)
 
     payload = {
         "displayNo": "prwbb1000",
@@ -1922,12 +1893,7 @@ def step7_area(ctx):
 
 def step8_building(ctx):
 
-    print()
-    print("=" * 60)
-    print(
-        f"STEP 8: 館 - {ctx.city_name}"
-    )
-    print("=" * 60)
+    logger.info("STEP 8: 館 - %s", ctx.city_name)
 
     payload = {
         "displayNo": "prwbb2000",
@@ -1985,12 +1951,7 @@ def step8_building(ctx):
 
 def step9_facility(ctx):
 
-    print()
-    print("=" * 60)
-    print(
-        f"STEP 9: 施設 - {ctx.city_name}"
-    )
-    print("=" * 60)
+    logger.info("STEP 9: 施設 - %s", ctx.city_name)
 
     payload = {
         "displayNo": "prwbb3000",
@@ -2050,26 +2011,22 @@ def step9_facility(ctx):
 
 def step10_search(ctx):
 
-    print()
-    print("=" * 60)
-    print("STEP 10: 利用日・曜日検索条件")
-    print("=" * 60)
+    logger.info("STEP 10: 利用日・曜日検索条件")
 
-    print(
-        f"指定日: "
-        f"{ctx.select_yy}-{ctx.select_mm}-{ctx.select_dd}"
+    logger.debug(
+        "指定日: %s-%s-%s",
+        ctx.select_yy,
+        ctx.select_mm,
+        ctx.select_dd,
     )
 
     selected_week = ctx.selected_week
 
-    print(
-        f"曜日設定: {selected_week}"
-    )
+    logger.debug("曜日設定: %s", selected_week)
 
     disp_week_num = sum(
         selected_week
     )
-
 
     select_yy = ctx.select_yy
     select_mm = ctx.select_mm
@@ -2078,7 +2035,6 @@ def step10_search(ctx):
     disp_yy = select_yy
     disp_mm = select_mm
     disp_dd = select_dd
-
 
     step10_data = [
         (
@@ -2103,7 +2059,6 @@ def step10_search(ctx):
         ),
     ]
 
-
     for value in selected_week:
 
         step10_data.append(
@@ -2112,7 +2067,6 @@ def step10_search(ctx):
                 str(value)
             )
         )
-
 
     step10_data.extend([
         (
@@ -2145,7 +2099,6 @@ def step10_search(ctx):
         ),
     ])
 
-
     response = ctx.session.post(
         VACANT_URL,
         data=step10_data,
@@ -2165,33 +2118,29 @@ def step10_search(ctx):
         "11_vacant_result.html"
     )
 
-
     if "prwca1000.jsp" in response.text:
 
-        print(
+        logger.info(
             "画面: prwca1000.jsp"
         )
 
     else:
 
-        print(
-            "警告: prwca1000.jsp "
-            "を確認できません。"
+        logger.warning(
+            "警告: prwca1000.jsp を確認できません。"
         )
-
 
     if "空き状況の検索結果" in response.text:
 
-        print(
+        logger.info(
             "空き状況検索結果画面を確認しました。"
         )
 
     else:
 
-        print(
+        logger.warning(
             "警告: 空き状況検索結果画面ではない可能性があります。"
         )
-
 
     return response
 
@@ -2199,7 +2148,6 @@ def step10_search(ctx):
 # ============================================================
 # 施設1件解析
 # ============================================================
-
 def parse_facility_response(
     response,
     facility_index,
@@ -2214,8 +2162,10 @@ def parse_facility_response(
         filename
     )
 
+    html_text = response.text
+
     result = parse_vacant_result(
-        response.text,
+        html_text,
         fallback_year=fallback_year
     )
 
@@ -2230,35 +2180,39 @@ def parse_facility_response(
         or f"施設 {facility_index}"
     )
 
-
-    print()
-    print(
-        f"[施設 {facility_index}] "
-        f"{facility_name}"
+    logger.info(
+        "[施設 %s] %s",
+        facility_index,
+        facility_name
     )
-
 
     if available_slots:
 
         for item in available_slots:
 
-            print(
-                f"  {item.get('date')} "
-                f"{item.get('time')}"
+            logger.info(
+                "  %s %s",
+                item.get("date"),
+                item.get("time")
             )
 
     else:
 
-        print(
+        logger.info(
             "  空きなし"
         )
-
 
     return {
         "index": facility_index,
         "result": result,
         "available_slots": available_slots,
-        "html": path,
+
+        # 通常運用ではファイル保存せず、
+        # 次施設処理に必要なHTMLをメモリ上で保持する。
+        "html": html_text,
+
+        # デバッグ時に保存した場合だけパスが入る。
+        "html_path": path,
     }
 
 
@@ -2472,13 +2426,16 @@ def scan_all_facilities(
 
     while True:
 
-        print()
-        print("=" * 60)
-        print(
-            f"次施設取得: "
-            f"srchSelectInstNo={next_index}"
+        logger.info(
+            "=" * 60
         )
-        print("=" * 60)
+        logger.info(
+            "次施設取得: srchSelectInstNo=%s",
+            next_index
+        )
+        logger.info(
+            "=" * 60
+        )
 
 
         # ----------------------------------------------------
@@ -2491,9 +2448,7 @@ def scan_all_facilities(
 
 
         previous_soup = BeautifulSoup(
-            previous_html.read_text(
-                encoding="utf-8"
-            ),
+            previous_html,
             "html.parser"
         )
 
@@ -2511,12 +2466,11 @@ def scan_all_facilities(
 
         except Exception as e:
 
-            print()
-            print(
-                "次施設POSTデータ作成失敗:"
+            logger.error(
+                "次施設POSTデータ作成失敗: %s",
+                e,
+                exc_info=True
             )
-
-            print(e)
 
             break
 
@@ -2534,8 +2488,9 @@ def scan_all_facilities(
         # 特に重要な項目を確認
         # ----------------------------------------------------
 
-        print()
-        print("次施設用重要パラメータ:")
+        logger.debug(
+            "次施設用重要パラメータ:"
+        )
 
         important_names = [
             "displayNo",
@@ -2566,12 +2521,12 @@ def scan_all_facilities(
             ]
 
             if values:
-                """
-                print(
-                    f"  {important_name} = "
-                    f"{values}"
+
+                logger.debug(
+                    "  %s = %s",
+                    important_name,
+                    values
                 )
-                """
 
 
         # ----------------------------------------------------
@@ -2588,12 +2543,11 @@ def scan_all_facilities(
 
         except requests.Timeout:
 
-            print()
-            print(
+            logger.warning(
                 "次施設POSTがタイムアウトしました。"
             )
 
-            print(
+            logger.warning(
                 "次施設なしとは判定せず、"
                 "ここで巡回を終了します。"
             )
@@ -2638,10 +2592,9 @@ def scan_all_facilities(
         )
 
 
-        print()
-        print(
-            f"次施設レスポンス判定: "
-            f"{reason}"
+        logger.info(
+            "次施設レスポンス判定: %s",
+            reason
         )
 
 
@@ -2651,14 +2604,8 @@ def scan_all_facilities(
 
         if not valid:
 
-            print()
-            print(
-                "次施設が存在しないとは断定しません。"
-            )
-
-            print(
-                "今回のレスポンスでは"
-                "次施設結果を取得できませんでした。"
+            logger.warning(
+                "次施設が存在しないとは判断しました。"
             )
 
             break
@@ -2685,7 +2632,12 @@ def scan_all_facilities(
             "index": next_index,
             "result": result,
             "available_slots": available_slots,
-            "html": path,
+
+            # 次施設処理のためHTML本文をメモリ上で保持する。
+            "html": response.text,
+
+            # デバッグ時に保存した場合だけパスが入る。
+            "html_path": path,
         }
 
 
@@ -2704,10 +2656,10 @@ def scan_all_facilities(
         )
 
 
-        print()
-        print(
-            f"[施設 {next_index}] "
-            f"{facility_name}"
+        logger.info(
+            "[施設 %s] %s",
+            next_index,
+            facility_name
         )
 
 
@@ -2715,14 +2667,15 @@ def scan_all_facilities(
 
             for item in available_slots:
 
-                print(
-                    f"  {item.get('date')} "
-                    f"{item.get('time')}"
+                logger.info(
+                    "  %s %s",
+                    item.get("date"),
+                    item.get("time")
                 )
 
         else:
 
-            print(
+            logger.info(
                 "  空きなし"
             )
 
@@ -2790,33 +2743,37 @@ def main(
             )
         selected_week = list(selected_week)
 
-    print()
-    print("=" * 70)
-    print("愛知県施設予約 空き状況検索")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("愛知県施設予約 空き状況検索")
+    logger.info("=" * 70)
 
-    print(
-        f"自治体: {city_name}"
+    logger.info(
+        "自治体: %s",
+        city_name
     )
 
-    print(
-        f"COMMUNITY_CD: {community_cd}"
+    logger.info(
+        "COMMUNITY_CD: %s",
+        community_cd
     )
 
-    print(
-        f"AREA_CD: {area_cd}"
+    logger.info(
+        "AREA_CD: %s",
+        area_cd
     )
 
-    print(
-        f"利用目的: バレーボール"
+    logger.info(
+        "利用目的: バレーボール"
     )
 
-    print(
-        f"検索日: "
-        f"{select_yy}-{select_mm}-{select_dd}"
+    logger.info(
+        "検索日: %s-%s-%s",
+        select_yy,
+        select_mm,
+        select_dd
     )
 
-    print("=" * 70)
+    logger.info("=" * 70)
 
     # ========================================================
     # Session
@@ -2910,10 +2867,9 @@ def main(
     # STEP 11以降
     # ========================================================
 
-    print()
-    print("=" * 60)
-    print("施設巡回開始")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("施設巡回開始")
+    logger.info("=" * 60)
 
     facilities = scan_all_facilities(
         ctx,
@@ -2933,13 +2889,13 @@ def main(
     # 完了
     # ========================================================
 
-    print()
-    print("=" * 60)
-    print("巡回完了")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("巡回完了")
+    logger.info("=" * 60)
 
-    print(
-        f"取得施設数: {len(facilities)}"
+    logger.info(
+        "取得施設数: %s",
+        len(facilities)
     )
 
     return facilities
