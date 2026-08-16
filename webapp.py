@@ -702,6 +702,50 @@ def index():
 
 
                 <!-- ==========================================
+                     最低連続空き時間
+                     ========================================== -->
+
+                <label
+                    class="section-label"
+                    for="min_hours"
+                >
+                    最低連続空き時間
+                </label>
+
+
+                <select
+                    id="min_hours"
+                    name="min_hours"
+                >
+
+                    <option value="0">
+                        指定なし
+                    </option>
+
+                    <option value="1">
+                        1時間以上
+                    </option>
+
+                    <option value="1.5">
+                        1時間30分以上
+                    </option>
+
+                    <option value="2">
+                        2時間以上
+                    </option>
+
+                    <option value="2.5">
+                        2時間30分以上
+                    </option>
+
+                    <option value="3">
+                        3時間以上
+                    </option>
+
+                </select>
+
+
+                <!-- ==========================================
                      検索ボタン
                      ========================================== -->
 
@@ -937,7 +981,8 @@ def index():
 def search(
     city: str = Query(default="KASUGAI"),
     search_date: date | None = Query(default=None),
-    weekday: list[int] | None = Query(default=None)
+    weekday: list[int] | None = Query(default=None),
+    min_hours: float = Query(default=0)
 ):
 
     logger.info("=" * 60)
@@ -957,6 +1002,11 @@ def search(
     logger.info(
         "Webから受け取った曜日: %s",
         weekday
+    )
+
+    logger.info(
+        "Webから受け取った最低連続空き時間(時間): %s",
+        min_hours
     )
 
 
@@ -1068,7 +1118,12 @@ def search(
 
     # ========================================================
     # 空きがある施設だけ抽出
+    #
+    # min_hours > 0 の場合は、その時間以上連続して
+    # 空いている施設だけに絞り込む（未指定時は従来通り）。
     # ========================================================
+
+    min_minutes = round(min_hours * 60)
 
     available_facilities = []
 
@@ -1079,11 +1134,26 @@ def search(
             []
         )
 
-        if available_slots:
+        if not available_slots:
+            continue
 
-            available_facilities.append(
-                facility_data
+        if not search_module.has_continuous_availability(
+            available_slots,
+            min_minutes
+        ):
+            continue
+
+        facility_data = dict(facility_data)
+        facility_data["available_slots"] = (
+            search_module.get_continuous_available_slots(
+                available_slots,
+                min_minutes
             )
+        )
+
+        available_facilities.append(
+            facility_data
+        )
 
 
     # ========================================================
@@ -1459,6 +1529,20 @@ def search(
 
     city_name = search_module.CITY_SETTINGS[city]["name"]
 
+    if min_hours > 0:
+
+        hours = int(min_hours)
+        minutes = round((min_hours - hours) * 60)
+
+        if minutes:
+            min_hours_label = f"{hours}時間{minutes}分以上"
+        else:
+            min_hours_label = f"{hours}時間以上"
+
+    else:
+
+        min_hours_label = "指定なし"
+
 
     html += f"""
         <div class="summary">
@@ -1487,6 +1571,13 @@ def search(
                 利用目的：
                 <strong>
                     バレーボール
+                </strong>
+
+                <br>
+
+                最低連続空き時間：
+                <strong>
+                    {min_hours_label}
                 </strong>
 
             </div>

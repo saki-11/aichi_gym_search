@@ -1324,6 +1324,194 @@ def get_available_slots(result):
 
 
 # ============================================================
+# 連続空き時間判定
+# ============================================================
+
+def parse_time_range(time_string):
+    """
+    "HH:MM" または "HH:MM-HH:MM" 形式の文字列を
+    (開始分, 終了分) の分単位タプルに変換する。
+
+    "HH:MM" のみの場合は1時間コマとみなす。
+    変換できない場合は None を返す。
+    """
+
+    if not time_string:
+        return None
+
+    match = re.match(
+        r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$",
+        time_string
+    )
+
+    if match:
+
+        start_minutes = (
+            int(match.group(1)) * 60
+            + int(match.group(2))
+        )
+
+        end_minutes = (
+            int(match.group(3)) * 60
+            + int(match.group(4))
+        )
+
+        return start_minutes, end_minutes
+
+
+    match = re.match(
+        r"^(\d{1,2}):(\d{2})$",
+        time_string
+    )
+
+    if match:
+
+        start_minutes = (
+            int(match.group(1)) * 60
+            + int(match.group(2))
+        )
+
+        return start_minutes, start_minutes + 60
+
+
+    return None
+
+
+def merge_continuous_ranges(available_slots):
+    """
+    空きコマを日付ごとにグループ化し、
+    時間的に連続する区間へマージする。
+
+    戻り値: { date: [(開始分, 終了分), ...], ... }
+    """
+
+    ranges_by_date = {}
+
+    for item in available_slots:
+
+        date_value = item.get("date")
+
+        time_range = parse_time_range(
+            item.get("time")
+        )
+
+        if date_value is None or time_range is None:
+            continue
+
+        ranges_by_date.setdefault(
+            date_value,
+            []
+        ).append(time_range)
+
+
+    merged_by_date = {}
+
+    for date_value, ranges in ranges_by_date.items():
+
+        ranges.sort(
+            key=lambda r: r[0]
+        )
+
+        merged = []
+
+        for start, end in ranges:
+
+            if merged and start <= merged[-1][1]:
+
+                merged[-1] = (
+                    merged[-1][0],
+                    max(merged[-1][1], end)
+                )
+
+            else:
+
+                merged.append((start, end))
+
+        merged_by_date[date_value] = merged
+
+
+    return merged_by_date
+
+
+def get_max_continuous_minutes(available_slots):
+    """空きコマ全体のうち、最長の連続空き時間(分)を返す。"""
+
+    merged_by_date = merge_continuous_ranges(
+        available_slots
+    )
+
+    max_minutes = 0
+
+    for ranges in merged_by_date.values():
+
+        for start, end in ranges:
+
+            max_minutes = max(
+                max_minutes,
+                end - start
+            )
+
+    return max_minutes
+
+
+def has_continuous_availability(available_slots, min_minutes):
+    """min_minutes以上連続して空いている区間が存在するか判定する。"""
+
+    if min_minutes <= 0:
+        return True
+
+    return (
+        get_max_continuous_minutes(available_slots)
+        >= min_minutes
+    )
+
+
+def get_continuous_available_slots(available_slots, min_minutes):
+    """条件を満たす連続区間に含まれる空きコマだけを返す。"""
+
+    if min_minutes <= 0:
+        return list(available_slots)
+
+    merged_by_date = merge_continuous_ranges(
+        available_slots
+    )
+
+    qualifying_ranges_by_date = {
+        date_value: [
+            time_range
+            for time_range in ranges
+            if time_range[1] - time_range[0] >= min_minutes
+        ]
+        for date_value, ranges in merged_by_date.items()
+    }
+
+    filtered_slots = []
+
+    for item in available_slots:
+
+        date_value = item.get("date")
+
+        time_range = parse_time_range(
+            item.get("time")
+        )
+
+        if time_range is None:
+            continue
+
+        if any(
+            time_range[0] >= start
+            and time_range[1] <= end
+            for start, end in qualifying_ranges_by_date.get(
+                date_value,
+                []
+            )
+        ):
+            filtered_slots.append(item)
+
+    return filtered_slots
+
+
+# ============================================================
 # 検索期間
 # ============================================================
 
